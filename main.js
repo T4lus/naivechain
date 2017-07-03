@@ -4,11 +4,14 @@
 
 //log 
 
-//03-07-2017 - added isValidHashDifficulty() - checks leading zeros. 
+//03-07-2017 - modified isValidHashDifficulty() to use global difficulty.
+//           - added isValidHashDifficulty() - checks leading zeros. 
 //           - 6 zeros on CPU mining takes ~10 mins per block.
 //           - added SHA256-based proof of work to generateNextBlock().
 //           - added nonce to block constructor and hash generation.
 //           - added calcGenesisHash() to regen genesis hash. 
+
+
 
 'use strict';
 var CryptoJS = require("crypto-js");
@@ -41,6 +44,8 @@ var MessageType = {
 var getGenesisBlock = () => {
     return new Block(0, "0", 1465154705, "// Regulators say 'shadow banking' has been tamed - Financial Times, Monday 3rd July 2017", 0, "4c25efcc5ee845170afd22b7287aa4d0ba5a9fd5db90a2e9f51c9043ec0ed695");
 };
+
+var difficulty = 5;
 
 var blockchain = [getGenesisBlock()];
 
@@ -126,12 +131,7 @@ var generateNextBlock = (blockData) => {
 };
 
 var isValidHashDifficulty = (hash) => {
-    if (hash.indexOf('000') == 0) {
-        return true;
-    }
-    else {
-        return false;
-    }
+    return (hash.indexOf(Array(difficulty + 1).join('0')) == 0);
 }
 
 var calculateHashForBlock = (block) => {
