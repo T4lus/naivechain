@@ -1,3 +1,15 @@
+
+//nick fallon 2017 
+//derived from https://github.com/lhartikk/naivechain
+
+//log 
+
+//03-07-2017 - added isValidHashDifficulty() - checks leading zeros. 
+//           - 6 zeros on CPU mining takes ~10 mins per block.
+//           - added SHA256-based proof of work to generateNextBlock().
+//           - added nonce to block constructor and hash generation.
+//           - added calcGenesisHash() to regen genesis hash. 
+
 'use strict';
 var CryptoJS = require("crypto-js");
 var express = require("express");
@@ -9,11 +21,12 @@ var p2p_port = process.env.P2P_PORT || 6001;
 var initialPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
 
 class Block {
-    constructor(index, previousHash, timestamp, data, hash) {
+    constructor(index, previousHash, timestamp, data, nonce, hash) {
         this.index = index;
         this.previousHash = previousHash.toString();
         this.timestamp = timestamp;
         this.data = data;
+        this.nonce = nonce;
         this.hash = hash.toString();
     }
 }
@@ -26,7 +39,7 @@ var MessageType = {
 };
 
 var getGenesisBlock = () => {
-    return new Block(0, "0", 1465154705, "my genesis block!!", "816534932c2b7154836da6afc367695e6337db8a921823784c14378abed4f7d7");
+    return new Block(0, "0", 1465154705, "// Regulators say 'shadow banking' has been tamed - Financial Times, Monday 3rd July 2017", 0, "4c25efcc5ee845170afd22b7287aa4d0ba5a9fd5db90a2e9f51c9043ec0ed695");
 };
 
 var blockchain = [getGenesisBlock()];
@@ -97,20 +110,36 @@ var initErrorHandler = (ws) => {
 
 
 var generateNextBlock = (blockData) => {
+    console.log(new Date().getTime() + ' mining block..');
     var previousBlock = getLatestBlock();
     var nextIndex = previousBlock.index + 1;
     var nextTimestamp = new Date().getTime() / 1000;
-    var nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
-    return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash);
+    //proof of work
+    var nonce = 0;
+    var nextHash = '';
+    while (!isValidHashDifficulty(nextHash)) {
+        nonce = nonce + 1;
+        nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, nonce, blockData);        
+    }
+    console.log(new Date().getTime() + 'mined block! nonce/hash = ' + nonce + ' ' + nextHash);
+    return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nonce, nextHash);
 };
 
+var isValidHashDifficulty = (hash) => {
+    if (hash.indexOf('000') == 0) {
+        return true;
+    }
+    else {
+        return false;
+    }
+}
 
 var calculateHashForBlock = (block) => {
-    return calculateHash(block.index, block.previousHash, block.timestamp, block.data);
+    return calculateHash(block.index, block.previousHash, block.timestamp, block.nonce, block.data);
 };
 
-var calculateHash = (index, previousHash, timestamp, data) => {
-    return CryptoJS.SHA256(index + previousHash + timestamp + data).toString();
+var calculateHash = (index, previousHash, timestamp, nonce, data) => {
+    return CryptoJS.SHA256(index + previousHash + timestamp + nonce + data).toString();
 };
 
 var addBlock = (newBlock) => {
@@ -126,6 +155,9 @@ var isValidNewBlock = (newBlock, previousBlock) => {
     } else if (previousBlock.hash !== newBlock.previousHash) {
         console.log('invalid previoushash');
         return false;
+    } else if (!isValidHashDifficulty(calculateHashForBlock(newBlock))) {
+        console.log('invalid hash does not meet difficulty requirements: ' + calculateHashForBlock(newBlock));
+        return false;        
     } else if (calculateHashForBlock(newBlock) !== newBlock.hash) {
         console.log(typeof (newBlock.hash) + ' ' + typeof calculateHashForBlock(newBlock));
         console.log('invalid hash: ' + calculateHashForBlock(newBlock) + ' ' + newBlock.hash);
@@ -208,3 +240,11 @@ var broadcast = (message) => sockets.forEach(socket => write(socket, message));
 connectToPeers(initialPeers);
 initHttpServer();
 initP2PServer();
+
+//calc genesis block hash
+var calcGenesisHash = () => {
+    var newb = calculateHashForBlock ( getGenesisBlock() );
+    console.log('genesis hash = ' + newb);
+}
+
+calcGenesisHash();
