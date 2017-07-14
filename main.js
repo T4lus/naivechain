@@ -1,23 +1,34 @@
+/*
+HTTP API
 
-//nick fallon 2017 
-//derived from https://github.com/lhartikk/naivechain
+Get blockchain:
+curl http://localhost:3001/blocks
 
-//log 
+Create block:
+curl - H "Content-type:application/json" --data '{"data" : "Some data to the first block"}' http://localhost:3001/mineBlock
 
-//03-07-2017 - modified isValidHashDifficulty() to use global difficulty.
-//           - added isValidHashDifficulty() - checks leading zeros. 
-//           - 6 zeros on CPU mining takes ~10 mins per block.
-//           - added SHA256-based proof of work to generateNextBlock().
-//           - added nonce to block constructor and hash generation.
-//           - added calcGenesisHash() to regen genesis hash. 
+Add peer:
+curl - H "Content-type:application/json" --data '{"peer" : "ws://localhost:6001"}' http://localhost:3001/addPeer
 
+Query connected peers:
+curl http://localhost:3001/peers
+*/
 
 
 'use strict';
+
+//naivechain
 var CryptoJS = require("crypto-js");
 var express = require("express");
 var bodyParser = require('body-parser');
 var WebSocket = require("ws");
+
+//elliptic
+var elliptic = require('elliptic');
+var BN = require('bn.js');
+var hash = require('hash.js');
+var Signature = require('elliptic/lib/elliptic/ec/signature');
+
 
 var http_port = process.env.HTTP_PORT || 3001;
 var p2p_port = process.env.P2P_PORT || 6001;
@@ -34,11 +45,23 @@ class Block {
     }
 }
 
+class Transaction {
+    constructor(message, signature) {
+
+        this.message = message;
+        this.signature = signature;
+
+    }
+}
+
+
+
 var sockets = [];
 var MessageType = {
     QUERY_LATEST: 0,
     QUERY_ALL: 1,
-    RESPONSE_BLOCKCHAIN: 2
+    RESPONSE_BLOCKCHAIN: 2,
+    RESPONSE_TRANSACTION: 3
 };
 
 var getGenesisBlock = () => {
@@ -48,12 +71,15 @@ var getGenesisBlock = () => {
 var difficulty = 5;
 
 var blockchain = [getGenesisBlock()];
+var transactions = [];
+
 
 var initHttpServer = () => {
     var app = express();
     app.use(bodyParser.json());
 
     app.get('/blocks', (req, res) => res.send(JSON.stringify(blockchain)));
+
     app.post('/mineBlock', (req, res) => {
         var newBlock = generateNextBlock(req.body.data);
         addBlock(newBlock);
@@ -61,14 +87,68 @@ var initHttpServer = () => {
         console.log('block added: ' + JSON.stringify(newBlock));
         res.send();
     });
+
     app.get('/peers', (req, res) => {
         res.send(sockets.map(s => s._socket.remoteAddress + ':' + s._socket.remotePort));
     });
+
     app.post('/addPeer', (req, res) => {
         connectToPeers([req.body.peer]);
         res.send();
     });
+
+    app.get('/newWallet', (req, res) => {        
+        var curve = elliptic.curves['ed25519'];
+        var ecdsa = new elliptic.ec(curve);
+        var keys = ecdsa.genKeyPair();
+        var pk = keys.getPublic('hex');
+        var sk = keys.getPrivate('hex');
+        res.send(JSON.stringify({ 'sk': sk, 'pk': pk }));
+    });
+
+    app.post('/pay', (req, res) => {
+
+        //POST 
+        //fromPK, fromIndex, toPK, toHash, amount, change
+
+        var fromPK = req.body.fromPK;
+        var fromIndex = req.body.fromIndex;
+        var fromHash = CryptoJS.SHA256(fromPK).toString();  
+        var toPK = req.body.toPK;
+        var toHash = CryptoJS.SHA256(toPK).toString();  
+        var amount = req.body.amount;
+        var change = req.body.change;
+        var sk = req.body.sk;
+        
+
+        var msg = {
+            inputs: [{ 'fromHash': fromHash, 'fromIndex': fromIndex, 'fromPK': fromPK }],
+            outputs: [{ 'toHash': toHash, 'amount': amount }, { 'toHash': fromHash, 'amount': change }]
+        };
+
+        //sign the transaction msg
+        var signature = ecdsa.sign(JSON.stringify(msg), sk);
+
+        //verify the sign
+        console.log('verified signature: ' + ecdsa.verify(msg, signature, pk, 'hex'));
+
+
+        //create a new transaction
+        var newTransaction = new Transaction(msg, signature);
+
+        //!!
+        //addTransaction(newTransaction);
+
+        //broadcast transaction
+        broadcast(responseTransaction());
+        console.log('transaction added: ' + JSON.stringify(newTransaction));
+        res.send();
+
+    });
+
     app.listen(http_port, () => console.log('Listening http on port: ' + http_port));
+
+
 };
 
 
@@ -100,6 +180,9 @@ var initMessageHandler = (ws) => {
             case MessageType.RESPONSE_BLOCKCHAIN:
                 handleBlockchainResponse(message);
                 break;
+            case MessageType.RESPONSE_TRANSACTION:
+                handleTransactionResponse(message);
+                break;
         }
     });
 };
@@ -130,6 +213,9 @@ var generateNextBlock = (blockData) => {
     return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nonce, nextHash);
 };
 
+
+
+
 var isValidHashDifficulty = (hash) => {
     return (hash.indexOf(Array(difficulty + 1).join('0')) == 0);
 }
@@ -147,6 +233,7 @@ var addBlock = (newBlock) => {
         blockchain.push(newBlock);
     }
 };
+
 
 var isValidNewBlock = (newBlock, previousBlock) => {
     if (previousBlock.index + 1 !== newBlock.index) {
@@ -198,6 +285,37 @@ var handleBlockchainResponse = (message) => {
     }
 };
 
+
+var handleTransactionResponse = (message) => {
+
+    //to do 
+
+    /*
+    var receivedBlocks = JSON.parse(message.data).sort((b1, b2) => (b1.index - b2.index));
+    var latestBlockReceived = receivedBlocks[receivedBlocks.length - 1];
+    var latestBlockHeld = getLatestBlock();
+    if (latestBlockReceived.index > latestBlockHeld.index) {
+        console.log('blockchain possibly behind. We got: ' + latestBlockHeld.index + ' Peer got: ' + latestBlockReceived.index);
+        if (latestBlockHeld.hash === latestBlockReceived.previousHash) {
+            console.log("We can append the received block to our chain");
+            blockchain.push(latestBlockReceived);
+            broadcast(responseLatestMsg());
+        } else if (receivedBlocks.length === 1) {
+            console.log("We have to query the chain from our peer");
+            broadcast(queryAllMsg());
+        } else {
+            console.log("Received blockchain is longer than current blockchain");
+            replaceChain(receivedBlocks);
+        }
+    } else {
+        console.log('received blockchain is not longer than received blockchain. Do nothing');
+    }
+    */
+
+};
+
+
+
 var replaceChain = (newBlocks) => {
     if (isValidChain(newBlocks) && newBlocks.length > blockchain.length) {
         console.log('Received blockchain is valid. Replacing current blockchain with received blockchain');
@@ -224,8 +342,12 @@ var isValidChain = (blockchainToValidate) => {
 };
 
 var getLatestBlock = () => blockchain[blockchain.length - 1];
-var queryChainLengthMsg = () => ({'type': MessageType.QUERY_LATEST});
-var queryAllMsg = () => ({'type': MessageType.QUERY_ALL});
+var queryChainLengthMsg = () => ({
+    'type': MessageType.QUERY_LATEST
+});
+var queryAllMsg = () => ({
+    'type': MessageType.QUERY_ALL
+});
 var responseChainMsg = () =>({
     'type': MessageType.RESPONSE_BLOCKCHAIN, 'data': JSON.stringify(blockchain)
 });
@@ -234,10 +356,16 @@ var responseLatestMsg = () => ({
     'data': JSON.stringify([getLatestBlock()])
 });
 
+var responseTransaction = () => ({
+    'type': MessageType.RESPONSE_TRANSACTION,
+    'data': JSON.stringify([transactions[transactions.length - 1]])
+});
+
 var write = (ws, message) => ws.send(JSON.stringify(message));
 var broadcast = (message) => sockets.forEach(socket => write(socket, message));
 
 connectToPeers(initialPeers);
+
 initHttpServer();
 initP2PServer();
 
@@ -246,5 +374,5 @@ var calcGenesisHash = () => {
     var newb = calculateHashForBlock ( getGenesisBlock() );
     console.log('genesis hash = ' + newb);
 }
-
 calcGenesisHash();
+
