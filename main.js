@@ -5,14 +5,40 @@ Get blockchain:
 curl http://localhost:3001/blocks
 
 Create block:
-curl - H "Content-type:application/json" --data '{"data" : "Some data to the first block"}' http://localhost:3001/mineBlock
+curl -H "Content-type:application/json" --data "{\"data":\"Some data to the first block\"}" http://localhost:3001/mineBlock
 
 Add peer:
-curl - H "Content-type:application/json" --data '{"peer" : "ws://localhost:6001"}' http://localhost:3001/addPeer
+curl -H "Content-type:application/json" --data '{"peer":"ws://localhost:6001"}' http://localhost:3001/addPeer
 
 Query connected peers:
 curl http://localhost:3001/peers
+
+
+On Windows:
+
+curl -H "Content-type:application/json" --data "{\"data\":\"Some data to the first block\"}" http://localhost:3001/mineBlock
+
+
+New Wallet:
+curl http://localhost:3001/newWallet
+
+Pay:
+curl -H "Content-type:application/json" --data "{\"fromPK\":\"047f89b9ecfc133b4f3de2cfe2eae9093fb1342d4896f944e070416448437d20536bbe504766d6be278d7c8fc6cee43fef8eed7fec5a7653b3deec92afc984d134\", \"fromIndex\":\"0\", \"toPK\":\"0459facfb2277d2e9c8b3a5fcef44d1f0b85e33855009d2552fd38ce8ada50832b18fab2c84eaa354ac5b3421179afa2868e1f70de1a527d5d772aba44998f6827\", \"amount\":\"125\", \"change\":\"875\", \"sk\":\"074439136697927594ac86dd991dcd1de14dc3575be430f80dffc00f4f454a03\", \"ts\":\"100\" }" http://localhost:3001/pay
+
+
+wallet 1
+{"sk":"074439136697927594ac86dd991dcd1de14dc3575be430f80dffc00f4f454a03",
+"pk":"047f89b9ecfc133b4f3de2cfe2eae9093fb1342d4896f944e070416448437d20536bbe504766d6be278d7c8fc6cee43fef8eed7fec5a7653b3deec92afc984d134"}
+
+wallet 2
+{"sk":"0ccceabdc0a282a507c4e85ce2556b1d5ceeca031eec532393cdfbe6042a980b",
+"pk":"0459facfb2277d2e9c8b3a5fcef44d1f0b85e33855009d2552fd38ce8ada50832b18fab2c84eaa354ac5b3421179afa2868e1f70de1a527d5d772aba44998f6827"}
+
+
+
 */
+
+
 
 
 'use strict';
@@ -47,10 +73,8 @@ class Block {
 
 class Transaction {
     constructor(message, signature) {
-
         this.message = message;
         this.signature = signature;
-
     }
 }
 
@@ -68,7 +92,7 @@ var getGenesisBlock = () => {
     return new Block(0, "0", 1465154705, "// Regulators say 'shadow banking' has been tamed - Financial Times, Monday 3rd July 2017", 0, "4c25efcc5ee845170afd22b7287aa4d0ba5a9fd5db90a2e9f51c9043ec0ed695");
 };
 
-var difficulty = 5;
+var difficulty = 3;
 
 var blockchain = [getGenesisBlock()];
 var transactions = [];
@@ -119,25 +143,28 @@ var initHttpServer = () => {
         var amount = req.body.amount;
         var change = req.body.change;
         var sk = req.body.sk;
-        
-
+        var ts = new Date().getTime();
         var msg = {
+            timestamp: { ts },
             inputs: [{ 'fromHash': fromHash, 'fromIndex': fromIndex, 'fromPK': fromPK }],
             outputs: [{ 'toHash': toHash, 'amount': amount }, { 'toHash': fromHash, 'amount': change }]
         };
 
-        //sign the transaction msg
-        var signature = ecdsa.sign(JSON.stringify(msg), sk);
+        //hash the msg
+        var msgHash = CryptoJS.SHA256(msg).toString();
 
-        //verify the sign
-        console.log('verified signature: ' + ecdsa.verify(msg, signature, pk, 'hex'));
+        //sign the transaction msgHash
+        var curve = elliptic.curves['ed25519'];
+        var ecdsa = new elliptic.ec(curve);
+        var signature = ecdsa.sign(JSON.stringify(msgHash), sk);
 
+        //verify the signed msgHash
+        console.log('verified signature: ' + ecdsa.verify(msgHash, signature, pk, 'hex'));
 
-        //create a new transaction
+        //create a new transaction. only one input permitted
         var newTransaction = new Transaction(msg, signature);
 
-        //!!
-        //addTransaction(newTransaction);
+        addTransaction(newTransaction);
 
         //broadcast transaction
         broadcast(responseTransaction());
@@ -235,6 +262,13 @@ var addBlock = (newBlock) => {
 };
 
 
+var addTransaction = (newTransaction) => {
+    if (isValidNewTransaction(newTransaction)) {
+        transactions.push(newTransaction);
+    }
+};
+
+
 var isValidNewBlock = (newBlock, previousBlock) => {
     if (previousBlock.index + 1 !== newBlock.index) {
         console.log('invalid index');
@@ -252,6 +286,14 @@ var isValidNewBlock = (newBlock, previousBlock) => {
     }
     return true;
 };
+
+
+var isValidNewTransaction = (newTransaction) => {
+
+    //to do 
+    return true;
+};
+
 
 var connectToPeers = (newPeers) => {
     newPeers.forEach((peer) => {
@@ -288,29 +330,29 @@ var handleBlockchainResponse = (message) => {
 
 var handleTransactionResponse = (message) => {
 
-    //to do 
+    //to do .. needs work
 
-    /*
-    var receivedBlocks = JSON.parse(message.data).sort((b1, b2) => (b1.index - b2.index));
-    var latestBlockReceived = receivedBlocks[receivedBlocks.length - 1];
-    var latestBlockHeld = getLatestBlock();
-    if (latestBlockReceived.index > latestBlockHeld.index) {
-        console.log('blockchain possibly behind. We got: ' + latestBlockHeld.index + ' Peer got: ' + latestBlockReceived.index);
-        if (latestBlockHeld.hash === latestBlockReceived.previousHash) {
-            console.log("We can append the received block to our chain");
-            blockchain.push(latestBlockReceived);
+    var receivedTransactions = JSON.parse(message.data).sort((b1, b2) => (b1.timestamp - b2.timestamp));
+    var latestTransactionReceived = receivedTransactions[receivedTransactions.length - 1];
+
+    var latestTransactionHeld = getLatestTransaction();
+    if (latestTransactionReceived.index > latestTransactionHeld.index) {
+        console.log('Transactionchain possibly behind. We got: ' + latestTransactionHeld.index + ' Peer got: ' + latestTransactionReceived.index);
+        if (latestTransactionHeld.hash === latestTransactionReceived.previousHash) {
+            console.log("We can append the received Transaction to our chain");
+            Transactionchain.push(latestTransactionReceived);
             broadcast(responseLatestMsg());
-        } else if (receivedBlocks.length === 1) {
+        } else if (receivedTransactions.length === 1) {
             console.log("We have to query the chain from our peer");
             broadcast(queryAllMsg());
         } else {
-            console.log("Received blockchain is longer than current blockchain");
-            replaceChain(receivedBlocks);
+            console.log("Received Transactionchain is longer than current Transactionchain");
+            replaceChain(receivedTransactions);
         }
     } else {
-        console.log('received blockchain is not longer than received blockchain. Do nothing');
+        console.log('received Transactionchain is not longer than received Transactionchain. Do nothing');
     }
-    */
+   
 
 };
 
@@ -375,4 +417,5 @@ var calcGenesisHash = () => {
     console.log('genesis hash = ' + newb);
 }
 calcGenesisHash();
+
 
