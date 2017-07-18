@@ -384,13 +384,18 @@ var isValidTransaction = (transaction) => {
         sum = sum + output.amount;
     });
 
-    //check input exists and not spent
-    //get block with index matching input 0 fromIndex 
+    //check input exists - get block with index matching input 0 fromIndex 
     var fromBlock = blockchain[transaction.inputs[0].fromIndex];
     //find the transaction in the block
     var tx = getTransactionInBlock(fromBlock, transaction.inputs[0].fromHash);
     var fromTransaction = tx.transaction;
     var fromOutput = tx.output;
+
+    //check inputs not spent
+    //- (to do) - 
+    //..
+
+    
 
     //check that input equals sum of outputs
     if (fromOutput.amount != sum) {
