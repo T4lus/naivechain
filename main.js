@@ -359,37 +359,6 @@ var handleTransactionResponse = (message) => {
 
     //broadcast all transactions
     broadcast(responseTransaction());
-
-
-    /*
-    var latestTransactionReceived = receivedTransactions[receivedTransactions.length - 1];
-    
-    var latestTransactionHeld = getLatestTransaction();
-
-    if (latestTransactionReceived.index > latestTransactionHeld.index) {
-        console.log('Transactionchain possibly behind. We got: ' + latestTransactionHeld.index + ' Peer got: ' + latestTransactionReceived.index);
-        if (latestTransactionHeld.hash === latestTransactionReceived.previousHash) {
-
-            console.log("We can append the received Transaction to our chain");
-            transactions.push(latestTransactionReceived);
-            broadcast(responseLatestBlockMsg());
-
-        } else if (receivedTransactions.length === 1) {
-
-            console.log("We have to query the chain from our peer");
-            broadcast(queryAllTransactions());
-
-        } else {
-
-            console.log("Received Transactionchain is longer than current Transactionchain");
-            replaceChain(receivedTransactions);
-
-        }
-    } else {
-        console.log('received Transactionchain is not longer than received Transactionchain. Do nothing');
-    }
-   */
-
 };
 
 
@@ -421,19 +390,71 @@ var isValidChain = (blockchainToValidate) => {
 
 var getLatestBlock = () => blockchain[blockchain.length - 1];
 
+
+var isValidTransaction = (transaction) => {
+    
+	//sum outputs
+	var sum = 0;
+	transaction.message.outputs.forEach(function(output) {
+		sum = sum + output.amount;
+	});
+
+	//check input exists and not spent
+	//get block with index matching input 0 fromIndex 
+	var fromBlock = blockchain[transaction.inputs[0].fromIndex];
+	//find the transaction in the block
+	var tx = getTransactionInBlock(fromBlock, transaction.inputs[0].fromHash);
+	var fromTransaction = tx.transaction;
+	var fromOutput = tx.output;
+
+	//check that input equals sum of outputs
+	if (fromOutput.amount != sum) {
+		console.log('invalid transaction - inputs not equal to outputs');
+		return false;
+	}	
+
+	//verify signature
+	var msgHash = CryptoJS.SHA256(transaction.msg).toString();
+	var isValid = ecdsa.verify(msgHash, transaction.signature, pk, 'hex');
+
+	if (!isValid) {
+		console.log('invalid transaction - invalid signature');
+		return false;
+	}
+	
+	return true;
+
+}
+
+var getTransactionInBlock = (fromBlock, fromHash) => {
+	//for each transaction in the block
+	fromBlock.data.forEach(function(transaction) {
+		var outputs = transaction.outputs;
+		outputs.forEach(function(output){
+			if (output.toHash == fromHash) {
+				return ({transaction, output});
+			}
+		});
+	});
+	return null;
+}
+
+
+
 //queries
 
 var queryLatestBlockMsg = () => ({
     'type': MessageType.QUERY_LATEST_BLOCK
 });
+
 var queryAllBlocksMsg = () => ({
     'type': MessageType.QUERY_ALL_BLOCKS
 });
 
-
 var queryLatestTransactionMsg = () => ({
     'type': MessageType.QUERY_LATEST_TRANSACTION
 });
+
 var queryAllTransactions = () => ({
     'type': MessageType.QUERY_ALL_TRANSACTIONS
 });
@@ -444,6 +465,7 @@ var responseAllBlocksMsg = () =>({
     'type': MessageType.RESPONSE_BLOCKCHAIN,
     'data': JSON.stringify(blockchain)
 });
+
 var responseLatestBlockMsg = () => ({
     'type': MessageType.RESPONSE_BLOCKCHAIN,
     'data': JSON.stringify([getLatestBlock()])
