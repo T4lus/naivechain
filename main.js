@@ -259,7 +259,7 @@ var addBlock = (newBlock) => {
 
 
 var addTransaction = (newTransaction) => {
-    if (isValidNewTransaction(newTransaction)) {
+    if (isValidTransaction(newTransaction)) {
         transactions.push(newTransaction);
     }
 };
@@ -283,12 +283,6 @@ var isValidNewBlock = (newBlock, previousBlock) => {
     return true;
 };
 
-
-var isValidNewTransaction = (newTransaction) => {
-
-    //to do 
-    return true;
-};
 
 
 var connectToPeers = (newPeers) => {
@@ -395,8 +389,6 @@ var isValidTransaction = (transaction) => {
     //- (to do) - 
     //..
 
-    
-
     //check that input equals sum of outputs
     if (fromOutput.amount != sum) {
         console.log('invalid transaction - inputs not equal to outputs');
@@ -488,8 +480,4 @@ var calcGenesisHash = () => {
     console.log('genesis hash = ' + newb);
 }
 calcGenesisHash();
-
-
-
-
 
