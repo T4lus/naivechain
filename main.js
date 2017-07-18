@@ -80,11 +80,28 @@ var getGenesisBlock = () => {
     return new Block(0, "0", 1465154705, "// Regulators say 'shadow banking' has been tamed - Financial Times, Monday 3rd July 2017", 0, "4c25efcc5ee845170afd22b7287aa4d0ba5a9fd5db90a2e9f51c9043ec0ed695");
 };
 
-var difficulty = 3;
 
+//make genesis coinbase transaction
+/*
+//do we want the from PK to be zero or the same as the output PK? we must sign the TX, which means
+//having a known from-PK..
+var coinbasePKHash = CryptoJS.SHA256('0459facfb2277d2e9c8b3a5fcef44d1f0b85e33855009d2552fd38ce8ada50832b18fab2c84eaa354ac5b3421179afa2868e1f70de1a527d5d772aba44998f6827').toString();  
+var mineGenesisPKHash = CryptoJS.SHA256('0459facfb2277d2e9c8b3a5fcef44d1f0b85e33855009d2552fd38ce8ada50832b18fab2c84eaa354ac5b3421179afa2868e1f70de1a527d5d772aba44998f6827').toString();  
+var msg = {
+    timestamp: 1465154705,
+    inputs: [{ 'fromHash': 0, 'fromIndex': 0, 'fromPK': 0 }],
+    outputs: [{ 'toHash': mineGenesisPKHash, 'amount': 50 }]
+};
+var newTransaction = makeTransaction(msg, sk);
+var genesis_coinbase_tx = makeTransaction(msg, sk);
+addTransaction(newTransaction);
+*/
+
+
+
+var difficulty = 3;
 var blockchain = [getGenesisBlock()];
 var transactions = [];
-
 
 var initHttpServer = () => {
     var app = express();
@@ -155,21 +172,16 @@ var initHttpServer = () => {
 };
 
 var makeTransaction = (msg, sk) => {
-
     //hash the msg
     var msgHash = CryptoJS.SHA256(msg).toString();
-
     //sign the transaction msgHash
     var curve = elliptic.curves['ed25519'];
     var ecdsa = new elliptic.ec(curve);
     var signature = ecdsa.sign(JSON.stringify(msgHash), sk);
-
     //verify the signed msgHash
     console.log('verified signature: ' + ecdsa.verify(msgHash, signature, pk, 'hex'));
-
     //create a new transaction. only one input permitted so only need one signature
-    var t = new Transaction(msg, signature);
-    return t;
+    return (new Transaction(msg, signature));
 }
 
 var initP2PServer = () => {
@@ -326,11 +338,15 @@ var handleBlockchainResponse = (message) => {
 
 var handleTransactionResponse = (message) => {
 
-    //needs work
-
     var receivedTransactions = JSON.parse(message.data).sort((b1, b2) => (b1.timestamp - b2.timestamp));
 
-    //to do - verify incoming received here
+    //verify incoming received transactions. reject everything if any tx is bad
+    receivedTransactions.forEach(function(t) {
+        if (!isValidTransaction(t)) {
+           console.log('handleTransactionResponse() received a bad transaction');
+           return false;
+        }
+    });
 
     //merge and dedupe with local transactions
     var a = receivedTransactions;
