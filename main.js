@@ -84,8 +84,9 @@ var sockets = [];
 var MessageType = {
     QUERY_LATEST: 0,
     QUERY_ALL: 1,
-    RESPONSE_BLOCKCHAIN: 2,
-    RESPONSE_TRANSACTION: 3
+    QUERY_TRANSACTION: 2,
+    RESPONSE_BLOCKCHAIN: 3,
+    RESPONSE_TRANSACTION: 4
 };
 
 var getGenesisBlock = () => {
@@ -163,7 +164,6 @@ var initHttpServer = () => {
 
         //create a new transaction. only one input permitted
         var newTransaction = new Transaction(msg, signature);
-
         addTransaction(newTransaction);
 
         //broadcast transaction
@@ -203,6 +203,9 @@ var initMessageHandler = (ws) => {
                 break;
             case MessageType.QUERY_ALL:
                 write(ws, responseChainMsg());
+                break;
+            case MessageType.QUERY_TRANSACTION:
+                write(ws, responseTransaction());
                 break;
             case MessageType.RESPONSE_BLOCKCHAIN:
                 handleBlockchainResponse(message);
@@ -330,29 +333,54 @@ var handleBlockchainResponse = (message) => {
 
 var handleTransactionResponse = (message) => {
 
-    //to do .. needs work
+    //needs work
 
     var receivedTransactions = JSON.parse(message.data).sort((b1, b2) => (b1.timestamp - b2.timestamp));
-    var latestTransactionReceived = receivedTransactions[receivedTransactions.length - 1];
 
+    //to do - verify incoming received here
+
+    //merge and dedupe with local transactions
+    var a = receivedTransactions;
+    var b = transactions;
+    var c = a.concat(b);
+    var d = c.filter(function (item, pos) { return c.indexOf(item) == pos });
+    var e = d.sort((b1, b2) => (b1.timestamp - b2.timestamp));
+
+    //replace transaction array
+    transactions = e;
+
+    //broadcast all transactions
+    broadcast(responseTransaction());
+
+
+    /*
+    var latestTransactionReceived = receivedTransactions[receivedTransactions.length - 1];
+    
     var latestTransactionHeld = getLatestTransaction();
+
     if (latestTransactionReceived.index > latestTransactionHeld.index) {
         console.log('Transactionchain possibly behind. We got: ' + latestTransactionHeld.index + ' Peer got: ' + latestTransactionReceived.index);
         if (latestTransactionHeld.hash === latestTransactionReceived.previousHash) {
+
             console.log("We can append the received Transaction to our chain");
-            Transactionchain.push(latestTransactionReceived);
+            transactions.push(latestTransactionReceived);
             broadcast(responseLatestMsg());
+
         } else if (receivedTransactions.length === 1) {
+
             console.log("We have to query the chain from our peer");
-            broadcast(queryAllMsg());
+            broadcast(queryTransaction());
+
         } else {
+
             console.log("Received Transactionchain is longer than current Transactionchain");
             replaceChain(receivedTransactions);
+
         }
     } else {
         console.log('received Transactionchain is not longer than received Transactionchain. Do nothing');
     }
-   
+   */
 
 };
 
@@ -390,8 +418,12 @@ var queryChainLengthMsg = () => ({
 var queryAllMsg = () => ({
     'type': MessageType.QUERY_ALL
 });
+var queryTransaction = () => ({
+    'type': MessageType.QUERY_TRANSACTION
+});
 var responseChainMsg = () =>({
-    'type': MessageType.RESPONSE_BLOCKCHAIN, 'data': JSON.stringify(blockchain)
+    'type': MessageType.RESPONSE_BLOCKCHAIN,
+    'data': JSON.stringify(blockchain)
 });
 var responseLatestMsg = () => ({
     'type': MessageType.RESPONSE_BLOCKCHAIN,
@@ -400,7 +432,7 @@ var responseLatestMsg = () => ({
 
 var responseTransaction = () => ({
     'type': MessageType.RESPONSE_TRANSACTION,
-    'data': JSON.stringify([transactions[transactions.length - 1]])
+    'data': JSON.stringify(transactions)
 });
 
 var write = (ws, message) => ws.send(JSON.stringify(message));
