@@ -82,11 +82,12 @@ class Transaction {
 
 var sockets = [];
 var MessageType = {
-    QUERY_LATEST: 0,
-    QUERY_ALL: 1,
-    QUERY_TRANSACTION: 2,
-    RESPONSE_BLOCKCHAIN: 3,
-    RESPONSE_TRANSACTION: 4
+    QUERY_LATEST_BLOCK: 0,
+    QUERY_ALL_BLOCKS: 1,
+    QUERY_LATEST_TRANSACTION: 2,
+    QUERY_ALL_TRANSACTIONS: 3,
+    RESPONSE_BLOCKCHAIN: 4,
+    RESPONSE_TRANSACTION: 5
 };
 
 var getGenesisBlock = () => {
@@ -108,7 +109,7 @@ var initHttpServer = () => {
     app.post('/mineBlock', (req, res) => {
         var newBlock = generateNextBlock(req.body.data);
         addBlock(newBlock);
-        broadcast(responseLatestMsg());
+        broadcast(responseLatestBlockMsg());
         console.log('block added: ' + JSON.stringify(newBlock));
         res.send();
     });
@@ -167,7 +168,8 @@ var initHttpServer = () => {
         addTransaction(newTransaction);
 
         //broadcast transaction
-        broadcast(responseTransaction());
+        broadcast(responseLatestTransactionMsg());
+
         console.log('transaction added: ' + JSON.stringify(newTransaction));
         res.send();
 
@@ -190,7 +192,10 @@ var initConnection = (ws) => {
     sockets.push(ws);
     initMessageHandler(ws);
     initErrorHandler(ws);
-    write(ws, queryChainLengthMsg());
+    write(ws, queryLatestBlockMsg());
+
+    //get transactions?
+
 };
 
 var initMessageHandler = (ws) => {
@@ -198,14 +203,17 @@ var initMessageHandler = (ws) => {
         var message = JSON.parse(data);
         console.log('Received message' + JSON.stringify(message));
         switch (message.type) {
-            case MessageType.QUERY_LATEST:
-                write(ws, responseLatestMsg());
+            case MessageType.QUERY_LATEST_BLOCK:
+                write(ws, responseLatestBlockMsg());
                 break;
-            case MessageType.QUERY_ALL:
-                write(ws, responseChainMsg());
+            case MessageType.QUERY_ALL_BLOCKS:
+                write(ws, responseAllBlocksMsg());
                 break;
-            case MessageType.QUERY_TRANSACTION:
-                write(ws, responseTransaction());
+            case MessageType.QUERY_LATEST_TRANSACTION:
+                write(ws, responseLatestTransactionsMsg());
+                break;
+            case MessageType.QUERY_ALL_TRANSACTIONS:
+                write(ws, responseAllTransactionsMsg());
                 break;
             case MessageType.RESPONSE_BLOCKCHAIN:
                 handleBlockchainResponse(message);
@@ -317,10 +325,10 @@ var handleBlockchainResponse = (message) => {
         if (latestBlockHeld.hash === latestBlockReceived.previousHash) {
             console.log("We can append the received block to our chain");
             blockchain.push(latestBlockReceived);
-            broadcast(responseLatestMsg());
+            broadcast(responseLatestBlockMsg());
         } else if (receivedBlocks.length === 1) {
             console.log("We have to query the chain from our peer");
-            broadcast(queryAllMsg());
+            broadcast(queryAllBlocksMsg());
         } else {
             console.log("Received blockchain is longer than current blockchain");
             replaceChain(receivedBlocks);
@@ -364,12 +372,12 @@ var handleTransactionResponse = (message) => {
 
             console.log("We can append the received Transaction to our chain");
             transactions.push(latestTransactionReceived);
-            broadcast(responseLatestMsg());
+            broadcast(responseLatestBlockMsg());
 
         } else if (receivedTransactions.length === 1) {
 
             console.log("We have to query the chain from our peer");
-            broadcast(queryTransaction());
+            broadcast(queryAllTransactions());
 
         } else {
 
@@ -390,7 +398,7 @@ var replaceChain = (newBlocks) => {
     if (isValidChain(newBlocks) && newBlocks.length > blockchain.length) {
         console.log('Received blockchain is valid. Replacing current blockchain with received blockchain');
         blockchain = newBlocks;
-        broadcast(responseLatestMsg());
+        broadcast(responseLatestBlockMsg());
     } else {
         console.log('Received blockchain invalid');
     }
@@ -412,25 +420,36 @@ var isValidChain = (blockchainToValidate) => {
 };
 
 var getLatestBlock = () => blockchain[blockchain.length - 1];
-var queryChainLengthMsg = () => ({
-    'type': MessageType.QUERY_LATEST
+
+//queries
+
+var queryLatestBlockMsg = () => ({
+    'type': MessageType.QUERY_LATEST_BLOCK
 });
-var queryAllMsg = () => ({
-    'type': MessageType.QUERY_ALL
+var queryAllBlocksMsg = () => ({
+    'type': MessageType.QUERY_ALL_BLOCKS
 });
-var queryTransaction = () => ({
-    'type': MessageType.QUERY_TRANSACTION
+
+
+var queryLatestTransactionMsg = () => ({
+    'type': MessageType.QUERY_LATEST_TRANSACTION
 });
-var responseChainMsg = () =>({
+var queryAllTransactions = () => ({
+    'type': MessageType.QUERY_ALL_TRANSACTIONS
+});
+
+//responses
+
+var responseAllBlocksMsg = () =>({
     'type': MessageType.RESPONSE_BLOCKCHAIN,
     'data': JSON.stringify(blockchain)
 });
-var responseLatestMsg = () => ({
+var responseLatestBlockMsg = () => ({
     'type': MessageType.RESPONSE_BLOCKCHAIN,
     'data': JSON.stringify([getLatestBlock()])
 });
 
-var responseTransaction = () => ({
+var responseAllTransactionsMsg = () => ({
     'type': MessageType.RESPONSE_TRANSACTION,
     'data': JSON.stringify(transactions)
 });
@@ -449,5 +468,3 @@ var calcGenesisHash = () => {
     console.log('genesis hash = ' + newb);
 }
 calcGenesisHash();
-
-
