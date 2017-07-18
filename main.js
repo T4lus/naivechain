@@ -65,7 +65,6 @@ class Transaction {
 }
 
 
-
 var sockets = [];
 var MessageType = {
     QUERY_LATEST_BLOCK: 0,
@@ -75,6 +74,7 @@ var MessageType = {
     RESPONSE_BLOCKCHAIN: 4,
     RESPONSE_TRANSACTION: 5
 };
+
 
 var getGenesisBlock = () => {
     return new Block(0, "0", 1465154705, "// Regulators say 'shadow banking' has been tamed - Financial Times, Monday 3rd July 2017", 0, "4c25efcc5ee845170afd22b7287aa4d0ba5a9fd5db90a2e9f51c9043ec0ed695");
@@ -131,26 +131,15 @@ var initHttpServer = () => {
         var amount = req.body.amount;
         var change = req.body.change;
         var sk = req.body.sk;
-        var ts = new Date().getTime();
+        var ts = Math.floor(new Date().getTime() / 1000);
         var msg = {
-            timestamp: { ts },
+            timestamp: ts,
             inputs: [{ 'fromHash': fromHash, 'fromIndex': fromIndex, 'fromPK': fromPK }],
             outputs: [{ 'toHash': toHash, 'amount': amount }, { 'toHash': fromHash, 'amount': change }]
         };
 
-        //hash the msg
-        var msgHash = CryptoJS.SHA256(msg).toString();
+        var newTransaction = makeTransaction(msg, sk);
 
-        //sign the transaction msgHash
-        var curve = elliptic.curves['ed25519'];
-        var ecdsa = new elliptic.ec(curve);
-        var signature = ecdsa.sign(JSON.stringify(msgHash), sk);
-
-        //verify the signed msgHash
-        console.log('verified signature: ' + ecdsa.verify(msgHash, signature, pk, 'hex'));
-
-        //create a new transaction. only one input permitted
-        var newTransaction = new Transaction(msg, signature);
         addTransaction(newTransaction);
 
         //broadcast transaction
@@ -165,6 +154,23 @@ var initHttpServer = () => {
 
 };
 
+var makeTransaction = (msg, sk) => {
+
+    //hash the msg
+    var msgHash = CryptoJS.SHA256(msg).toString();
+
+    //sign the transaction msgHash
+    var curve = elliptic.curves['ed25519'];
+    var ecdsa = new elliptic.ec(curve);
+    var signature = ecdsa.sign(JSON.stringify(msgHash), sk);
+
+    //verify the signed msgHash
+    console.log('verified signature: ' + ecdsa.verify(msgHash, signature, pk, 'hex'));
+
+    //create a new transaction. only one input permitted so only need one signature
+    var t = new Transaction(msg, signature);
+    return t;
+}
 
 var initP2PServer = () => {
     var server = new WebSocket.Server({port: p2p_port});
@@ -224,7 +230,7 @@ var generateNextBlock = (blockData) => {
     console.log(new Date().getTime() + ' mining block..');
     var previousBlock = getLatestBlock();
     var nextIndex = previousBlock.index + 1;
-    var nextTimestamp = new Date().getTime() / 1000;
+    var nextTimestamp = Math.floor(new Date().getTime() / 1000);
     //proof of work
     var nonce = 0;
     var nextHash = '';
@@ -480,4 +486,8 @@ var calcGenesisHash = () => {
     console.log('genesis hash = ' + newb);
 }
 calcGenesisHash();
+
+
+
+
 
