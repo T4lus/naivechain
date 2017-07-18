@@ -109,6 +109,9 @@ var initHttpServer = () => {
 
     app.get('/blocks', (req, res) => res.send(JSON.stringify(blockchain)));
 
+    app.get('/transactions', (req, res) => res.send(JSON.stringify(transactions)));
+
+
     app.post('/mineBlock', (req, res) => {
         var newBlock = generateNextBlock(req.body.data);
         addBlock(newBlock);
@@ -126,7 +129,7 @@ var initHttpServer = () => {
         res.send();
     });
 
-    app.get('/newWallet', (req, res) => {        
+    app.get('/newWallet', (req, res) => {
         var curve = elliptic.curves['ed25519'];
         var ecdsa = new elliptic.ec(curve);
         var keys = ecdsa.genKeyPair();
@@ -142,9 +145,9 @@ var initHttpServer = () => {
 
         var fromPK = req.body.fromPK;
         var fromIndex = req.body.fromIndex;
-        var fromHash = CryptoJS.SHA256(fromPK).toString();  
+        var fromHash = CryptoJS.SHA256(fromPK).toString();
         var toPK = req.body.toPK;
-        var toHash = CryptoJS.SHA256(toPK).toString();  
+        var toHash = CryptoJS.SHA256(toPK).toString();
         var amount = req.body.amount;
         var change = req.body.change;
         var sk = req.body.sk;
@@ -185,7 +188,7 @@ var makeTransaction = (msg, sk) => {
 }
 
 var initP2PServer = () => {
-    var server = new WebSocket.Server({port: p2p_port});
+    var server = new WebSocket.Server({ port: p2p_port });
     server.on('connection', ws => initConnection(ws));
     console.log('listening websocket p2p port on: ' + p2p_port);
 
@@ -248,7 +251,7 @@ var generateNextBlock = (blockData) => {
     var nextHash = '';
     while (!isValidHashDifficulty(nextHash)) {
         nonce = nonce + 1;
-        nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, nonce, blockData);        
+        nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, nonce, blockData);
     }
     console.log(new Date().getTime() + 'mined block! nonce/hash = ' + nonce + ' ' + nextHash);
     return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nonce, nextHash);
@@ -292,7 +295,7 @@ var isValidNewBlock = (newBlock, previousBlock) => {
         return false;
     } else if (!isValidHashDifficulty(calculateHashForBlock(newBlock))) {
         console.log('invalid hash does not meet difficulty requirements: ' + calculateHashForBlock(newBlock));
-        return false;        
+        return false;
     } else if (calculateHashForBlock(newBlock) !== newBlock.hash) {
         console.log(typeof (newBlock.hash) + ' ' + typeof calculateHashForBlock(newBlock));
         console.log('invalid hash: ' + calculateHashForBlock(newBlock) + ' ' + newBlock.hash);
@@ -341,10 +344,10 @@ var handleTransactionResponse = (message) => {
     var receivedTransactions = JSON.parse(message.data).sort((b1, b2) => (b1.timestamp - b2.timestamp));
 
     //verify incoming received transactions. reject everything if any tx is bad
-    receivedTransactions.forEach(function(t) {
+    receivedTransactions.forEach(function (t) {
         if (!isValidTransaction(t)) {
-           console.log('handleTransactionResponse() received a bad transaction');
-           return false;
+            console.log('handleTransactionResponse() received a bad transaction');
+            return false;
         }
     });
 
@@ -393,10 +396,10 @@ var getLatestBlock = () => blockchain[blockchain.length - 1];
 
 
 var isValidTransaction = (transaction) => {
-    
+
     //sum outputs
     var sum = 0;
-    transaction.message.outputs.forEach(function(output) {
+    transaction.message.outputs.forEach(function (output) {
         sum = sum + output.amount;
     });
 
@@ -415,7 +418,7 @@ var isValidTransaction = (transaction) => {
     if (fromOutput.amount != sum) {
         console.log('invalid transaction - inputs not equal to outputs');
         return false;
-    }   
+    }
 
     //verify signature
     var msgHash = CryptoJS.SHA256(transaction.msg).toString();
@@ -425,18 +428,18 @@ var isValidTransaction = (transaction) => {
         console.log('invalid transaction - invalid signature');
         return false;
     }
-    
+
     return true;
 
 }
 
 var getTransactionInBlock = (fromBlock, fromHash) => {
     //for each transaction in the block
-    fromBlock.data.forEach(function(transaction) {
+    fromBlock.data.forEach(function (transaction) {
         var outputs = transaction.outputs;
-        outputs.forEach(function(output){
+        outputs.forEach(function (output) {
             if (output.toHash == fromHash) {
-                return ({transaction, output});
+                return ({ transaction, output });
             }
         });
     });
@@ -465,7 +468,7 @@ var queryAllTransactions = () => ({
 
 //responses
 
-var responseAllBlocksMsg = () =>({
+var responseAllBlocksMsg = () => ({
     'type': MessageType.RESPONSE_BLOCKCHAIN,
     'data': JSON.stringify(blockchain)
 });
@@ -498,7 +501,7 @@ initP2PServer();
 
 //calc genesis block hash
 var calcGenesisHash = () => {
-    var newb = calculateHashForBlock ( getGenesisBlock() );
+    var newb = calculateHashForBlock(getGenesisBlock());
     console.log('genesis hash = ' + newb);
 }
 calcGenesisHash();
