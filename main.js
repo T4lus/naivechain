@@ -1,41 +1,27 @@
+
+
 /*
 HTTP API
-
 Get blockchain:
 curl http://localhost:3001/blocks
-
 Create block:
 curl -H "Content-type:application/json" --data "{\"data":\"Some data to the first block\"}" http://localhost:3001/mineBlock
-
 Add peer:
 curl -H "Content-type:application/json" --data '{"peer":"ws://localhost:6001"}' http://localhost:3001/addPeer
-
 Query connected peers:
 curl http://localhost:3001/peers
-
-
 On Windows:
-
 curl -H "Content-type:application/json" --data "{\"data\":\"Some data to the first block\"}" http://localhost:3001/mineBlock
-
-
 New Wallet:
 curl http://localhost:3001/newWallet
-
 Pay:
 curl -H "Content-type:application/json" --data "{\"fromPK\":\"047f89b9ecfc133b4f3de2cfe2eae9093fb1342d4896f944e070416448437d20536bbe504766d6be278d7c8fc6cee43fef8eed7fec5a7653b3deec92afc984d134\", \"fromIndex\":\"0\", \"toPK\":\"0459facfb2277d2e9c8b3a5fcef44d1f0b85e33855009d2552fd38ce8ada50832b18fab2c84eaa354ac5b3421179afa2868e1f70de1a527d5d772aba44998f6827\", \"amount\":\"125\", \"change\":\"875\", \"sk\":\"074439136697927594ac86dd991dcd1de14dc3575be430f80dffc00f4f454a03\", \"ts\":\"100\" }" http://localhost:3001/pay
-
-
 wallet 1
 {"sk":"074439136697927594ac86dd991dcd1de14dc3575be430f80dffc00f4f454a03",
 "pk":"047f89b9ecfc133b4f3de2cfe2eae9093fb1342d4896f944e070416448437d20536bbe504766d6be278d7c8fc6cee43fef8eed7fec5a7653b3deec92afc984d134"}
-
 wallet 2
 {"sk":"0ccceabdc0a282a507c4e85ce2556b1d5ceeca031eec532393cdfbe6042a980b",
 "pk":"0459facfb2277d2e9c8b3a5fcef44d1f0b85e33855009d2552fd38ce8ada50832b18fab2c84eaa354ac5b3421179afa2868e1f70de1a527d5d772aba44998f6827"}
-
-
-
 */
 
 
@@ -168,7 +154,7 @@ var initHttpServer = () => {
         addTransaction(newTransaction);
 
         //broadcast transaction
-        broadcast(responseLatestTransactionMsg());
+        broadcast(responseLatestTransactionMsg(newTransaction));
 
         console.log('transaction added: ' + JSON.stringify(newTransaction));
         res.send();
@@ -176,7 +162,6 @@ var initHttpServer = () => {
     });
 
     app.listen(http_port, () => console.log('Listening http on port: ' + http_port));
-
 
 };
 
@@ -393,50 +378,50 @@ var getLatestBlock = () => blockchain[blockchain.length - 1];
 
 var isValidTransaction = (transaction) => {
     
-	//sum outputs
-	var sum = 0;
-	transaction.message.outputs.forEach(function(output) {
-		sum = sum + output.amount;
-	});
+    //sum outputs
+    var sum = 0;
+    transaction.message.outputs.forEach(function(output) {
+        sum = sum + output.amount;
+    });
 
-	//check input exists and not spent
-	//get block with index matching input 0 fromIndex 
-	var fromBlock = blockchain[transaction.inputs[0].fromIndex];
-	//find the transaction in the block
-	var tx = getTransactionInBlock(fromBlock, transaction.inputs[0].fromHash);
-	var fromTransaction = tx.transaction;
-	var fromOutput = tx.output;
+    //check input exists and not spent
+    //get block with index matching input 0 fromIndex 
+    var fromBlock = blockchain[transaction.inputs[0].fromIndex];
+    //find the transaction in the block
+    var tx = getTransactionInBlock(fromBlock, transaction.inputs[0].fromHash);
+    var fromTransaction = tx.transaction;
+    var fromOutput = tx.output;
 
-	//check that input equals sum of outputs
-	if (fromOutput.amount != sum) {
-		console.log('invalid transaction - inputs not equal to outputs');
-		return false;
-	}	
+    //check that input equals sum of outputs
+    if (fromOutput.amount != sum) {
+        console.log('invalid transaction - inputs not equal to outputs');
+        return false;
+    }   
 
-	//verify signature
-	var msgHash = CryptoJS.SHA256(transaction.msg).toString();
-	var isValid = ecdsa.verify(msgHash, transaction.signature, pk, 'hex');
+    //verify signature
+    var msgHash = CryptoJS.SHA256(transaction.msg).toString();
+    var isValid = ecdsa.verify(msgHash, transaction.signature, pk, 'hex');
 
-	if (!isValid) {
-		console.log('invalid transaction - invalid signature');
-		return false;
-	}
-	
-	return true;
+    if (!isValid) {
+        console.log('invalid transaction - invalid signature');
+        return false;
+    }
+    
+    return true;
 
 }
 
 var getTransactionInBlock = (fromBlock, fromHash) => {
-	//for each transaction in the block
-	fromBlock.data.forEach(function(transaction) {
-		var outputs = transaction.outputs;
-		outputs.forEach(function(output){
-			if (output.toHash == fromHash) {
-				return ({transaction, output});
-			}
-		});
-	});
-	return null;
+    //for each transaction in the block
+    fromBlock.data.forEach(function(transaction) {
+        var outputs = transaction.outputs;
+        outputs.forEach(function(output){
+            if (output.toHash == fromHash) {
+                return ({transaction, output});
+            }
+        });
+    });
+    return null;
 }
 
 
@@ -476,6 +461,14 @@ var responseAllTransactionsMsg = () => ({
     'data': JSON.stringify(transactions)
 });
 
+var responseLatestTransactionMsg = (transaction) => ({
+    'type': MessageType.RESPONSE_TRANSACTION,
+    'data': JSON.stringify(transaction)
+});
+
+
+
+
 var write = (ws, message) => ws.send(JSON.stringify(message));
 var broadcast = (message) => sockets.forEach(socket => write(socket, message));
 
@@ -490,3 +483,8 @@ var calcGenesisHash = () => {
     console.log('genesis hash = ' + newb);
 }
 calcGenesisHash();
+
+
+
+
+
