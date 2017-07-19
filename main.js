@@ -41,7 +41,6 @@ var BN = require('bn.js');
 var hash = require('hash.js');
 var Signature = require('elliptic/lib/elliptic/ec/signature');
 
-
 var http_port = process.env.HTTP_PORT || 3001;
 var p2p_port = process.env.P2P_PORT || 6001;
 var initialPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
@@ -58,7 +57,8 @@ class Block {
 }
 
 class Transaction {
-    constructor(message, signature) {
+    constructor(hash, message, signature) {
+        this.hash = hash;
         this.message = message;
         this.signature = signature;
     }
@@ -77,7 +77,14 @@ var MessageType = {
 
 
 var getGenesisBlock = () => {
-    return new Block(0, "0", 1465154705, "// Regulators say 'shadow banking' has been tamed - Financial Times, Monday 3rd July 2017", 0, "4c25efcc5ee845170afd22b7287aa4d0ba5a9fd5db90a2e9f51c9043ec0ed695");
+    return new Block(
+        0,
+        "0",
+        1465154705,
+        "// Regulators say 'shadow banking' has been tamed - Financial Times, Monday 3rd July 2017",
+        0,
+        "4c25efcc5ee845170afd22b7287aa4d0ba5a9fd5db90a2e9f51c9043ec0ed695"
+    );
 };
 
 
@@ -98,8 +105,10 @@ addTransaction(newTransaction);
 */
 
 
-
+//to do - we shouldn't have a static difficulty, it needs to adjust dynamically.
+//pay attention to the verification of blocks from peers - we check it there, too.
 var difficulty = 3;
+
 var blockchain = [getGenesisBlock()];
 var transactions = [];
 
@@ -111,9 +120,10 @@ var initHttpServer = () => {
 
     app.get('/transactions', (req, res) => res.send(JSON.stringify(transactions)));
 
-
     app.post('/mineBlock', (req, res) => {
-        var newBlock = generateNextBlock(req.body.data);
+        // var newBlock = generateNextBlock(req.body.data);
+        var newBlock = generateNextBlock(JSON.stringify(transactions));
+
         addBlock(newBlock);
         broadcast(responseLatestBlockMsg());
         console.log('block added: ' + JSON.stringify(newBlock));
@@ -140,9 +150,15 @@ var initHttpServer = () => {
 
     app.post('/pay', (req, res) => {
 
-        //POST 
+        //POST /pay
         //fromPK, fromIndex, toPK, toHash, amount, change
 
+        //for now, I'm allowing a single input and 2 outputs. 
+        //2nd output is your returned change, which you must specify.
+        //to do - calculate the correct change by retrieving the input amount.
+        //to do - specify a fee for the miner.
+        
+        //get POSTed info
         var fromPK = req.body.fromPK;
         var fromIndex = req.body.fromIndex;
         var fromHash = CryptoJS.SHA256(fromPK).toString();
@@ -152,17 +168,19 @@ var initHttpServer = () => {
         var change = req.body.change;
         var sk = req.body.sk;
         var ts = Math.floor(new Date().getTime() / 1000);
+
         var msg = {
             timestamp: ts,
             inputs: [{ 'fromHash': fromHash, 'fromIndex': fromIndex, 'fromPK': fromPK }],
             outputs: [{ 'toHash': toHash, 'amount': amount }, { 'toHash': fromHash, 'amount': change }]
         };
 
+        //create and broadcast the transaction
+
         var newTransaction = makeTransaction(msg, sk);
 
         addTransaction(newTransaction);
 
-        //broadcast transaction
         broadcast(responseLatestTransactionMsg(newTransaction));
 
         console.log('transaction added: ' + JSON.stringify(newTransaction));
@@ -184,7 +202,7 @@ var makeTransaction = (msg, sk) => {
     //verify the signed msgHash
     console.log('verified signature: ' + ecdsa.verify(msgHash, signature, pk, 'hex'));
     //create a new transaction. only one input permitted so only need one signature
-    return (new Transaction(msg, signature));
+    return (new Transaction(msgHash, msg, signature));
 }
 
 var initP2PServer = () => {
@@ -201,6 +219,7 @@ var initConnection = (ws) => {
     write(ws, queryLatestBlockMsg());
 
     //get transactions?
+    //to do.
 
 };
 
